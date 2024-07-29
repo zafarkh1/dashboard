@@ -1,14 +1,23 @@
 <script>
-  import BarChart from './Chart.svelte';
-  import {onMount} from 'svelte';
+  import { onMount } from 'svelte';
+  import ChartComponent from './Chart.svelte';
+
+  const dataStrings = [
+    "0,10, 1,13, 2,23, 3,43, 4,53, 5,92, 6,22",
+    "0,15, 1,10, 2,20, 3,40, 4,50, 5,85, 6,25",
+    "0,12, 1,14, 2,22, 3,41, 4,52, 5,90, 6,20",
+    "0,11, 1,16, 2,24, 3,42, 4,51, 5,88, 6,23",
+    "0,13, 1,12, 2,21, 3,44, 4,54, 5,91, 6,21",
+    "0,14, 1,11, 2,25, 3,45, 4,55, 5,89, 6,24"
+  ];
 
   let ws;
   let dataBuffer = [];
-  let labels = [];
+  let allData = [];
   let currentData = [];
+  let totals = [];
   let loading = true;
 
-  // Function to parse the data string into values
   const parseDataValues = (dataStr) => {
     const dataPairs = dataStr.split(',').map(Number);
     const values = [];
@@ -18,13 +27,14 @@
     return values;
   };
 
-  // Function to update data buffer
   const updateDataBuffer = (newData) => {
     dataBuffer.push(newData);
-    if (dataBuffer.length > 10) {
+    allData.push(...newData);
+    if (dataBuffer.length > 7) {
       dataBuffer.shift();
     }
     currentData = transposeData(dataBuffer);
+    calculateTotals();
     loading = currentData.length === 0;
   };
 
@@ -41,47 +51,90 @@
     return transposed;
   };
 
+  const calculateTotals = () => {
+    totals = allData.reduce((acc, value, index) => {
+      const dataIndex = index % 7;
+      acc[dataIndex] = (acc[dataIndex] || 0) + value;
+      return acc;
+    }, []);
+  };
+
   onMount(() => {
-    ws = new WebSocket('ws://10.0.1.31:81');
-
-    ws.onopen = () => {
-      console.log('WebSocket connection established');
-    };
-
-    ws.onmessage = (event) => {
-      const dataStr = event.data;
-      const newData = parseDataValues(dataStr);
+    let index = 0;
+    const interval = setInterval(() => {
+      const newData = parseDataValues(dataStrings[index]);
       updateDataBuffer(newData);
+      index = (index + 1) % dataStrings.length;
+    }, 1000);
 
-      labels = generateLabels(currentData.length);
-      console.log('Current data:', currentData);
-    };
-
-    ws.onerror = (error) => {
-      console.error('WebSocket error:', error);
-    };
-
-    ws.onclose = () => {
-      console.log('WebSocket connection closed');
-    };
+    return () => clearInterval(interval);
   });
 
-  const generateLabels = (numElements) => {
-    return Array.from({length: numElements}, (_, i) => `${i + 1}`);
-  };
+  // onMount(() => {
+  // ws = new WebSocket('ws://10.0.1.99:81');
+  // ws.onopen = () => {
+  //   console.log('WebSocket connection established');
+  // };
+  //
+  // ws.onmessage = (event) => {
+  //   const dataStr = event.data;
+  //   console.log(event.data)
+  //   const newData = parseDataValues(dataStr);
+  //   updateDataBuffer(newData);
+  //
+  // };
+  //
+  // ws.onerror = (error) => {
+  //   console.error('WebSocket error:', error);
+  // };
+  //
+  // ws.onclose = () => {
+  //   console.log('WebSocket connection closed');
+  // };
+  //
+  // const chartUpdateInterval = setInterval(() => {
+  //   currentData = transposeData(dataBuffer);
+  //   calculateTotals();
+  // }, 20000);
+  //
+  // return () => {
+  //   clearInterval(chartUpdateInterval);
+  //   ws.close();
+  // };
+  // });
+
+  const colorScheme = [
+    {bg: '#FFF3CD', bar: 'rgba(255, 159, 64, 0.2)', border: 'rgba(255, 159, 64, 0.2)'},
+    {bg: '#E3F2FD', bar: 'rgba(66, 165, 245, 0.2)', border: 'rgba(66, 165, 245, 1)'},
+    {bg: '#E8F5E9', bar: 'rgba(102, 187, 106, 0.2)', border: 'rgba(102, 187, 106, 1)'},
+    {bg: '#FFEBEE', bar: 'rgba(239, 83, 80, 0.2)', border: 'rgba(239, 83, 80, 1)'},
+    {bg: '#F3E5F5', bar: 'rgba(171, 71, 188, 0.2)', border: 'rgba(171, 71, 188, 1)'},
+    {bg: '#FFE0B2', bar: 'rgba(251, 140, 0, 0.2)', border: 'rgba(251, 140, 0, 1)'}
+  ];
+
+  function getColor(index) {
+    return colorScheme[index % colorScheme.length].bg;
+  }
+
+  function getBarColor(index, isBackground) {
+    return isBackground ? colorScheme[index % colorScheme.length].bar : colorScheme[index % colorScheme.length].border;
+  }
+
 </script>
 
 <style>
-  .chart-container {
-    width: 32%;
-    height: calc(100vh / 2);
-    display: inline-block;
-    vertical-align: top;
-    margin-right: 10px;
+  :global(body) {
+    margin: 0;
+    padding: 0;
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+    display: block;
+    font-family: 'Roboto', sans-serif;
   }
 
-  .chart-container:last-child {
-    margin-right: 0;
+  :global(*) {
+    box-sizing: border-box;
   }
 
   .loader {
@@ -127,8 +180,15 @@
     </div>
 {/if}
 
-{#each currentData as data, index}
-    <div class="chart-container">
-        <BarChart {labels} {data} chartTitle={`Data Set ${index + 1}`}/>
-    </div>
-{/each}
+<div class="chart-container">
+    {#each currentData as data, index}
+        <ChartComponent
+                chartId={index}
+                {data}
+                total={totals[index] || 0}
+                backgroundColor={getBarColor(index, true)}
+                borderColor={getBarColor(index, false)}
+                style="background-color: {getColor(index)};"
+        />
+    {/each}
+</div>
